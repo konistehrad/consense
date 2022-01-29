@@ -16,8 +16,7 @@ typedef float HkDecimal;
 
 const gpio_num_t SDA_GPIO = GPIO_NUM_21;
 const gpio_num_t SCL_GPIO = GPIO_NUM_22;
-// keep the device in normal mode, to allow for consistent adjustment
-// against PCB self-heating
+// keep the device in forced mode, as recommended by datasheet for humidity sensing
 const BMP280_Mode BMP280_UPDATE_MODE = BMP280_MODE_FORCED;
 // moderate standby time in normal mode, ignored in forced mode
 const BMP280_StandbyTime BMP280_STANDBY_TIME = BMP280_STANDBY_500;
@@ -58,7 +57,7 @@ esp_err_t safe_notify(void* chr)
     esp_err_t result = hk_notify(chr);
     if(result != ESP_OK)
     {
-        ESP_LOGE(LOGNAME, "Failed to notify with error: %s\n", esp_err_to_name(result));
+        ESP_LOGE(LOGNAME, "Failed to notify with error: %s", esp_err_to_name(result));
     }
     return result;
 }
@@ -125,9 +124,9 @@ void bmp280_loop(void *pvParameters)
         temperature = (HkDecimal)(fTemp + BMP280_TEMP_OFFSET);
         humidity = (HkDecimal)fHum;
         ESP_LOGI(LOGNAME, "T:%.2fC H:%.2f", temperature, humidity);
-        if(loopCount == NOTIFY_EVERY)
+        if(NOTIFY_EVERY != 0 && loopCount == NOTIFY_EVERY)
         {
-            if(chr_humidity_ptr != NULL)  safe_notify(chr_humidity_ptr);
+            if(chr_humidity_ptr    != NULL) safe_notify(chr_humidity_ptr);
             if(chr_temperature_ptr != NULL) safe_notify(chr_temperature_ptr);
             loopCount = 0;
         }
@@ -148,7 +147,7 @@ void hk_setup(void)
     ESP_ERROR_CHECK(hk_setup_finish());
 
     ESP_ERROR_CHECK(hk_init("ConSense", HK_CAT_SENSOR, "026-62-932"));
-    ESP_LOGI(LOGNAME, "HK initialization complete.\n");
+    ESP_LOGI(LOGNAME, "HK initialization complete.");
 }
 
 esp_err_t pm_init(void)
