@@ -17,9 +17,9 @@ typedef float HkDecimal;
 const gpio_num_t SDA_GPIO = GPIO_NUM_21;
 const gpio_num_t SCL_GPIO = GPIO_NUM_22;
 
-HkDecimal pressure = 0;
-HkDecimal temperature = 0;
-HkDecimal humidity = 0;
+volatile HkDecimal pressure = 0;
+volatile HkDecimal temperature = 0;
+volatile HkDecimal humidity = 0;
 
 void* chr_temperature_ptr = NULL;
 void* chr_humidity_ptr = NULL;
@@ -69,6 +69,15 @@ void bmp280_loop(void *pvParameters)
 {
     bmp280_params_t params;
     bmp280_init_default_params(&params);
+    // scenario settings lifted from
+    // https://github.com/letscontrolit/ESPEasy/issues/164
+    params.mode = BMP280_MODE_FORCED;
+    params.oversampling_humidity = BMP280_ULTRA_LOW_POWER;
+    params.oversampling_temperature = BMP280_STANDARD;
+    params.oversampling_pressure = BMP280_SKIPPED;
+    params.filter = BMP280_FILTER_16;
+    params.standby = BMP280_STANDBY_4000;
+
     bmp280_t dev;
     memset(&dev, 0, sizeof(bmp280_t));
 
@@ -82,9 +91,32 @@ void bmp280_loop(void *pvParameters)
     {
         vTaskDelay(pdMS_TO_TICKS(250));
         float fTemp, fPres, fHum;
+        bool measuring = true;
+
+        if( bmp280_force_measurement(&dev) != ESP_OK )
+        {
+            ESP_LOGW(LOGNAME, "Force measurement failed; waiting 250ms then retrying...\n");
+            continue;
+        }
+        while(measuring) 
+        {
+            if( bmp280_is_measuring(&dev, &measuring) != ESP_OK )
+            {
+                ESP_LOGW(LOGNAME, "Cannot resolve if measuring! Waiting...\n");
+            }
+            else if (measuring)
+            {
+                ESP_LOGI(LOGNAME, "Measuring! Waiting...\n");
+            }
+            else
+            {
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
         if (bmp280_read_float(&dev, &fTemp, &fPres, &fHum) != ESP_OK)
         {
-            ESP_LOGI(LOGNAME, "Temperature/pressure reading failed; waiting 250ms then retrying...\n");
+            ESP_LOGW(LOGNAME, "Temperature/pressure reading failed; waiting 250ms then retrying...\n");
             continue;
         }
         pressure = (HkDecimal)fPres;
@@ -100,7 +132,7 @@ void bmp280_loop(void *pvParameters)
             safe_notify(chr_temperature_ptr);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(9500));
+        vTaskDelay(pdMS_TO_TICKS(60000));
     }
 }
 
