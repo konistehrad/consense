@@ -55,6 +55,16 @@ esp_err_t on_read_humid(hk_mem *response)
     return ESP_OK;
 }
 
+esp_err_t safe_notify(void* chr)
+{
+    esp_err_t result = hk_notify(chr);
+    if(result != ESP_OK)
+    {
+        ESP_LOGE(LOGNAME, "Failed to notify with error: %s\n", esp_err_to_name(result));
+    }
+    return result;
+}
+
 void bmp280_loop(void *pvParameters)
 {
     bmp280_params_t params;
@@ -66,7 +76,7 @@ void bmp280_loop(void *pvParameters)
     ESP_ERROR_CHECK(bmp280_init(&dev, &params));
 
     bool bme280p = dev.id == BME280_CHIP_ID;
-    ESP_LOGI("BMP280", "Found %s\n", bme280p ? "BME280" : "BMP280");
+    ESP_LOGI(LOGNAME, "Found %s\n", bme280p ? "BME280" : "BMP280");
 
     while (1)
     {
@@ -74,31 +84,38 @@ void bmp280_loop(void *pvParameters)
         float fTemp, fPres, fHum;
         if (bmp280_read_float(&dev, &fTemp, &fPres, &fHum) != ESP_OK)
         {
-            printf("Temperature/pressure reading failed\n");
+            ESP_LOGI(LOGNAME, "Temperature/pressure reading failed; waiting 250ms then retrying...\n");
             continue;
         }
         pressure = (HkDecimal)fPres;
         temperature = (HkDecimal)fTemp;
         humidity = (HkDecimal)fHum;
-        ESP_LOGI("BMP280", "T:%.2fC H:%.2f P:%2.f\n", fTemp, fHum, fPres);
-        if(chr_humidity_ptr != NULL) hk_notify(chr_humidity_ptr);
-        if(chr_temperature_ptr != NULL) hk_notify(chr_temperature_ptr);
+        ESP_LOGI(LOGNAME, "T:%.2fC H:%.2f P:%2.f\n", fTemp, fHum, fPres);
+        if(chr_humidity_ptr != NULL) 
+        {
+            safe_notify(chr_humidity_ptr);
+        }
+        if(chr_temperature_ptr != NULL) 
+        {
+            safe_notify(chr_temperature_ptr);
+        }
+
         vTaskDelay(pdMS_TO_TICKS(9500));
     }
 }
 
 void hk_setup(void)
 {
-    hk_setup_start();
-    hk_setup_add_accessory("Enviroment Sensor", "Conrad's Closet", "ESP32 D1 Mini", "0000001", "1", on_identify);
-    hk_setup_add_srv(HK_SRV_TEMPERATURE_SENSOR, true, false);
-    hk_setup_add_chr(HK_CHR_CURRENT_TEMPERATURE, on_read_temp, NULL, true, &chr_temperature_ptr); 
+    ESP_ERROR_CHECK(hk_setup_start());
+    ESP_ERROR_CHECK(hk_setup_add_accessory("Enviroment Sensor", "Conrad's Closet", "ESP32 D1 Mini", "0000001", "1", on_identify));
+    ESP_ERROR_CHECK(hk_setup_add_srv(HK_SRV_TEMPERATURE_SENSOR, true, false));
+    ESP_ERROR_CHECK(hk_setup_add_chr(HK_CHR_CURRENT_TEMPERATURE, on_read_temp, NULL, true, &chr_temperature_ptr)); 
     
-    hk_setup_add_srv(HK_SRV_HUMIDITY_SENSOR, true, false);
-    hk_setup_add_chr(HK_CHR_CURRENT_RELATIVE_HUMIDITY, on_read_humid, NULL, true, &chr_humidity_ptr); 
-    hk_setup_finish();
+    ESP_ERROR_CHECK(hk_setup_add_srv(HK_SRV_HUMIDITY_SENSOR, true, false));
+    ESP_ERROR_CHECK(hk_setup_add_chr(HK_CHR_CURRENT_RELATIVE_HUMIDITY, on_read_humid, NULL, true, &chr_humidity_ptr)); 
+    ESP_ERROR_CHECK(hk_setup_finish());
 
-    hk_init("ConSense", HK_CAT_SENSOR, "026-62-932");
+    ESP_ERROR_CHECK(hk_init("ConSense", HK_CAT_SENSOR, "026-62-932"));
     ESP_LOGI(LOGNAME, "HK initialization complete.\n");
 }
 
