@@ -1,0 +1,9 @@
+[submodule "components/esp32_hap_wolfssl"]
+	path = components/esp32_hap_wolfssl
+	url = https://github.com/slompf18/esp32_hap_wolfssl.git
+[submodule "components/esp32_hap"]
+	path = components/esp32_hap
+	url = https://github.com/vavrusa/esp32_hap.git
+[submodule "components/esp-idf-lib"]
+	path = components/esp-idf-lib
+	url = https://github.com/UncleRus/esp-idf-lib.git
