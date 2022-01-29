@@ -76,7 +76,7 @@ void bmp280_loop(void *pvParameters)
     params.oversampling_temperature = BMP280_STANDARD;
     params.oversampling_pressure = BMP280_SKIPPED;
     params.filter = BMP280_FILTER_16;
-    params.standby = BMP280_STANDBY_4000;
+    params.standby = BMP280_STANDBY_500;
 
     bmp280_t dev;
     memset(&dev, 0, sizeof(bmp280_t));
@@ -106,7 +106,7 @@ void bmp280_loop(void *pvParameters)
             }
             else if (measuring)
             {
-                ESP_LOGI(LOGNAME, "Measuring! Waiting...\n");
+                ESP_LOGD(LOGNAME, "Measuring! Waiting...\n");
             }
             else
             {
@@ -151,7 +151,7 @@ void hk_setup(void)
     ESP_LOGI(LOGNAME, "HK initialization complete.\n");
 }
 
-void pm_init(void)
+esp_err_t pm_init(void)
 {
 #if CONFIG_PM_ENABLE
     // Configure dynamic frequency scaling:
@@ -175,12 +175,15 @@ void pm_init(void)
 
     ESP_ERROR_CHECK( esp_pm_configure(&pm_config) );
 #endif
+    return ESP_OK;
 }
 
 void app_main(void)
 {
     ESP_LOGI(LOGNAME, "SDK version:%s\n", esp_get_idf_version());
     ESP_LOGI(LOGNAME, "Starting\n");
+    ESP_ERROR_CHECK(pm_init());
+    ESP_LOGI(LOGNAME, "Power management initialized.\n");
 
     ESP_ERROR_CHECK(i2cdev_init());
     ESP_LOGI(LOGNAME, "i2c initialization complete.\n");
