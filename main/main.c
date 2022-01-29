@@ -18,11 +18,16 @@ const gpio_num_t SDA_GPIO = GPIO_NUM_21;
 const gpio_num_t SCL_GPIO = GPIO_NUM_22;
 // keep the device in normal mode, to allow for consistent adjustment
 // against PCB self-heating
-const BMP280_Mode BMP280_UPDATE_MODE = BMP280_MODE_NORMAL;
-// moderate standby time in normal mode
+const BMP280_Mode BMP280_UPDATE_MODE = BMP280_MODE_FORCED;
+// moderate standby time in normal mode, ignored in forced mode
 const BMP280_StandbyTime BMP280_STANDBY_TIME = BMP280_STANDBY_500;
  // amount we have to subtract to compensate for enclosure and PCB self-heating
 const HkDecimal BMP280_TEMP_OFFSET = -3.7; // degrees C
+const BMP280_Oversampling BMP280_PRESSURE_OVERSAMPLE = BMP280_SKIPPED;
+const BMP280_Oversampling BMP280_HUMIDITY_OVERSAMPLE = BMP280_ULTRA_LOW_POWER;
+const BMP280_Oversampling BMP280_TEMPERATURE_OVERSAMPLE = BMP280_ULTRA_LOW_POWER;
+const BMP280_Filter BMP280_FILTER = BMP280_FILTER_OFF;
+const uint16_t NOTIFY_EVERY = 60; // loops, 1/min
 
 volatile HkDecimal pressure = 0;
 volatile HkDecimal temperature = 0;
@@ -30,20 +35,6 @@ volatile HkDecimal humidity = 0;
 
 void* chr_temperature_ptr = NULL;
 void* chr_humidity_ptr = NULL;
-
-esp_err_t bmp280_read_double(bmp280_t *dev, double *temperature, double *pressure, double *humidity)
-{
-    int32_t fixed_temperature;
-    uint32_t fixed_pressure;
-    uint32_t fixed_humidity;
-    ESP_ERROR_CHECK(bmp280_read_fixed(dev, &fixed_temperature, &fixed_pressure, humidity ? &fixed_humidity : NULL));
-    *temperature = (double)fixed_temperature / 100;
-    *pressure = (double)fixed_pressure / 256;
-    if (humidity)
-        *humidity = (double)fixed_humidity / 1024;
-
-    return ESP_OK;
-}
 
 void on_identify()
 {
@@ -74,13 +65,14 @@ esp_err_t safe_notify(void* chr)
 
 void bmp280_loop(void *pvParameters)
 {
+    uint16_t loopCount = 0;
     bmp280_params_t params;
     bmp280_init_default_params(&params);
     params.mode = BMP280_UPDATE_MODE;
-    params.oversampling_humidity = BMP280_ULTRA_LOW_POWER;
-    params.oversampling_temperature = BMP280_MODE_NORMAL;
-    params.oversampling_pressure = BMP280_SKIPPED;
-    params.filter = BMP280_FILTER_4;
+    params.oversampling_humidity = BMP280_HUMIDITY_OVERSAMPLE;
+    params.oversampling_temperature = BMP280_TEMPERATURE_OVERSAMPLE;
+    params.oversampling_pressure = BMP280_PRESSURE_OVERSAMPLE;
+    params.filter = BMP280_FILTER;
     params.standby = BMP280_STANDBY_TIME;
 
     bmp280_t dev;
@@ -102,22 +94,22 @@ void bmp280_loop(void *pvParameters)
         {
             if( bmp280_force_measurement(&dev) != ESP_OK )
             {
-                ESP_LOGW(LOGNAME, "Force measurement failed; waiting 250ms then retrying...\n");
+                ESP_LOGW(LOGNAME, "Force measurement failed; waiting 250ms then retrying...");
                 continue;
             }
             while(measuring) 
             {
                 if( bmp280_is_measuring(&dev, &measuring) != ESP_OK )
                 {
-                    ESP_LOGW(LOGNAME, "Cannot resolve if measuring! Waiting...\n");
+                    ESP_LOGW(LOGNAME, "Cannot resolve if measuring! Waiting...");
                 }
                 else if (measuring)
                 {
-                    ESP_LOGI(LOGNAME, "Measuring; waiting...\n");
+                    ESP_LOGD(LOGNAME, "Measuring; waiting...");
                 }
                 else
                 {
-                    ESP_LOGI(LOGNAME, "Measuring complete!");
+                    ESP_LOGD(LOGNAME, "Measuring complete!");
                     break;
                 }
                 vTaskDelay(pdMS_TO_TICKS(10));
@@ -125,23 +117,22 @@ void bmp280_loop(void *pvParameters)
         }
         if (bmp280_read_float(&dev, &fTemp, &fPres, &fHum) != ESP_OK)
         {
-            ESP_LOGW(LOGNAME, "Temperature/pressure reading failed; waiting 250ms then retrying...\n");
+            ESP_LOGW(LOGNAME, "Temperature/pressure reading failed; waiting 250ms then retrying...");
             continue;
         }
+        loopCount += 1;
         pressure = (HkDecimal)fPres;
         temperature = (HkDecimal)(fTemp + BMP280_TEMP_OFFSET);
         humidity = (HkDecimal)fHum;
-        ESP_LOGI(LOGNAME, "T:%.2fC H:%.2f P:%2.f\n", temperature, humidity, pressure);
-        if(chr_humidity_ptr != NULL) 
+        ESP_LOGI(LOGNAME, "T:%.2fC H:%.2f", temperature, humidity);
+        if(loopCount == NOTIFY_EVERY)
         {
-            safe_notify(chr_humidity_ptr);
-        }
-        if(chr_temperature_ptr != NULL) 
-        {
-            safe_notify(chr_temperature_ptr);
+            if(chr_humidity_ptr != NULL)  safe_notify(chr_humidity_ptr);
+            if(chr_temperature_ptr != NULL) safe_notify(chr_temperature_ptr);
+            loopCount = 0;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(30000));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
