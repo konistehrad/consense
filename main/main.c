@@ -5,8 +5,10 @@
 
 #include <string.h>
 #include <bmp280.h>
+#include <esp_pm.h>
 #include <esp_system.h>
 #include <esp_log.h>
+#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <driver/gpio.h>
 
@@ -81,7 +83,7 @@ void bmp280_loop(void *pvParameters)
         ESP_LOGI("BMP280", "T:%.2fC H:%.2f P:%2.f\n", fTemp, fHum, fPres);
         if(chr_humidity_ptr != NULL) hk_notify(chr_humidity_ptr);
         if(chr_temperature_ptr != NULL) hk_notify(chr_temperature_ptr);
-        vTaskDelay(pdMS_TO_TICKS(4500));
+        vTaskDelay(pdMS_TO_TICKS(9500));
     }
 }
 
@@ -98,6 +100,32 @@ void hk_setup(void)
 
     hk_init("ConSense", HK_CAT_SENSOR, "026-62-932");
     ESP_LOGI(LOGNAME, "HK initialization complete.\n");
+}
+
+void pm_init(void)
+{
+#if CONFIG_PM_ENABLE
+    // Configure dynamic frequency scaling:
+    // maximum and minimum frequencies are set in sdkconfig,
+    // automatic light sleep is enabled if tickless idle support is enabled.
+#if CONFIG_IDF_TARGET_ESP32
+    esp_pm_config_esp32_t pm_config = {
+#elif CONFIG_IDF_TARGET_ESP32S2
+    esp_pm_config_esp32s2_t pm_config = {
+#elif CONFIG_IDF_TARGET_ESP32C3
+    esp_pm_config_esp32c3_t pm_config = {
+#elif CONFIG_IDF_TARGET_ESP32S3
+    esp_pm_config_esp32s3_t pm_config = {
+#endif
+            .max_freq_mhz = 160,
+            .min_freq_mhz = 80,
+#if CONFIG_FREERTOS_USE_TICKLESS_IDLE
+            .light_sleep_enable = true
+#endif
+    };
+
+    ESP_ERROR_CHECK( esp_pm_configure(&pm_config) );
+#endif
 }
 
 void app_main(void)
